@@ -1,0 +1,23 @@
+on: push
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-lint
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 💿 Setup ruff
+        run: |
+          pipx install ruff
+
+      - name: 🧪 Ruff
+        run: |
+          ruff check

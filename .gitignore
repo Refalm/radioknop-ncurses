@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*~
+
+# Operating system junk
+.DS_Store
+Thumbs.db
+.fuse_hidden*
+.directory
+nohup.out
+
+# Ignore
+*.ignore
