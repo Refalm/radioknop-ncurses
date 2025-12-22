@@ -1,18 +1,17 @@
 # Makefile for radioknop-ncurses
 
-# Define the virtual environment directory
-VENV_DIR = .venv
-PYTHON = $(VENV_DIR)/bin/python
+PYTHON = python3
+SCRIPT_NAME = radioknop_tui.py
+SHELL := /bin/bash
 
-.PHONY: all install run clean help
+.PHONY: all install run help
 
 all: help
 
 help:
 	@echo "Available commands:"
-	@echo "  make install - Detects OS, installs dependencies, and creates a virtual environment"
+	@echo "  make install - Installs dependencies (mpv, python3)"
 	@echo "  make run     - Runs the application"
-	@echo "  make clean   - Removes the virtual environment"
 
 install:
 	@echo ">>> Detecting OS and installing system dependencies (mpv, python3)..."
@@ -30,74 +29,58 @@ install:
 	fi; \
 	case "$$OS_ID" in \
 		debian|ubuntu) \
-			echo ">>> Detected Debian-based system. Trying to install dependencies..."; \
-			sudo apt-get update && sudo apt-get install -y mpv python3-pip python3-venv; \
+			echo ">>> Detected Debian/Ubuntu-based system..."; \
+			sudo apt-get update && sudo apt-get install -y mpv python3; \
 			;; \
 		fedora|rhel|centos) \
-			echo ">>> Detected Red Hat-based system. Trying to install dependencies..."; \
-			sudo dnf install -y mpv python3-pip; \
+			echo ">>> Detected Fedora/RHEL-based system..."; \
+			sudo dnf install -y mpv python3; \
 			;; \
 		bazzite|aurora|bluefin) \
-			echo ">>> Detected Universal Blue-based system. Checking for dependencies..."; \
+			echo ">>> Detected Atomic/Universal Blue system..."; \
 			TO_INSTALL=""; \
-			for pkg in mpv python3-pip; do \
+			for pkg in mpv python3; do \
 				if ! rpm -q $$pkg >/dev/null 2>&1; then \
 					TO_INSTALL="$$TO_INSTALL $$pkg"; \
 				fi; \
 			done; \
 			if [ -n "$$TO_INSTALL" ]; then \
 				echo ">>> Installing missing packages:$$TO_INSTALL"; \
-				echo "    Note: This will layer new packages. A system reboot may be required for them to become available."; \
+				echo "    Note: A system reboot may be required after installation."; \
 				rpm-ostree install --idempotent $$TO_INSTALL; \
 			else \
-				echo ">>> All required dependencies are already installed."; \
+				echo ">>> All dependencies already installed."; \
 			fi; \
 			;; \
-		arch) \
-			echo ">>> Detected Arch-based system. Trying to install dependencies..."; \
-			sudo pacman -Syu --noconfirm mpv python-pip; \
+		arch|manjaro) \
+			echo ">>> Detected Arch-based system..."; \
+			sudo pacman -S --needed --noconfirm mpv python; \
 			;; \
-		opensuse|suse) \
-			echo ">>> Detected SUSE-based system. Trying to install dependencies..."; \
-			sudo zypper -n install mpv python-pip; \
+		opensuse*|suse|gecko) \
+			echo ">>> Detected SUSE-based system..."; \
+			sudo zypper -n install mpv python3; \
 			;; \
 		alpine) \
-			echo ">>> Detected Alpine-based system. Trying to install dependencies..."; \
-			sudo apk add mpv python3 py3-pip; \
-			;; \
-		slackware) \
-			echo ">>> Detected Slackware-based system. Trying to install dependencies..."; \
-			sudo sbopkg -i mpv; \
+			echo ">>> Detected Alpine Linux..."; \
+			sudo apk add mpv python3; \
 			;; \
 		macos) \
-			echo ">>> Detected macOS. Trying to install dependencies with Homebrew..."; \
+			echo ">>> Detected macOS..."; \
 			if ! command -v brew >/dev/null 2>&1; then \
-				echo "Homebrew not found. Please install it from https://brew.sh/" && exit 1; \
+				echo "Homebrew not found. Install from https://brew.sh/" && exit 1; \
 			fi; \
 			brew install mpv python3; \
 			;; \
 		*) \
-			echo ">>> WARNING: OS '$$OS_ID' not automatically supported. Please ensure 'mpv' and 'python3' are installed manually."; \
+			echo ">>> WARNING: OS '$$OS_ID' not automatically supported."; \
+			echo ">>> Please install 'mpv' and 'python3' manually."; \
 			;; \
 	esac
-	@echo ">>> Proceeding with virtual environment setup."
-	@$(MAKE) $(VENV_DIR)/bin/activate
 
-$(VENV_DIR)/bin/activate: requirements.txt
-	@if [ ! -d "$(VENV_DIR)" ]; then \
-		echo ">>> Creating virtual environment..."; \
-		python3 -m venv $(VENV_DIR); \
+run:
+	@if [ ! -f $(SCRIPT_NAME) ]; then \
+		echo "Error: $(SCRIPT_NAME) not found!"; \
+		exit 1; \
 	fi
-	@echo ">>> Installing dependencies..."
-	@$(PYTHON) -m pip install -r requirements.txt
-	@touch $(VENV_DIR)/bin/activate
-
-run: $(VENV_DIR)/bin/activate
-	@echo ">>> Starting radioknop-ncurses..."
-	@$(PYTHON) radioknop_tui.py
-
-clean:
-	@echo ">>> Cleaning up..."
-	@rm -rf $(VENV_DIR)
-	@echo ">>> Done."
-
+	@echo ">>> Starting RadioKnop TUI..."
+	@$(PYTHON) $(SCRIPT_NAME)

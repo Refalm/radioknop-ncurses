@@ -2,12 +2,15 @@
 import curses
 import json
 import locale
-import requests
 import subprocess
 import time
 import os
 import tempfile
 import shutil
+import urllib.request
+import urllib.error
+from typing import Optional, List, Dict, Any, Union
+
 
 TRANSLATIONS = {
     'en': {
@@ -17,21 +20,21 @@ TRANSLATIONS = {
         'select_genre': "Select a Genre",
         'stations_in': "Stations in '{genre_name}'",
         'no_stations': "No stations found for '{genre_name}'.",
-        'press_back': "Press any key to go back...",
+        'press_back': "Press 'B' to go back...",
         'playing': "Playing: {station_name}",
         'stopped': "Stopped: {station_name}",
         'stream_error': "Error: Could not find stream URL for '{station_name}'.",
         'press_continue': "Press any key to continue...",
         'invalid_genre': "'{genre_name}' is not a valid genre category.",
-        'instructions_nav': "[↑] [↓] Navigate",
-        'instructions_play': "[⏎ Enter]: Play/Stop",
+        'instructions_nav': "[↑/↓] Navigate",
+        'instructions_play': "[Enter] Play/Stop",
         'instructions_quit': "[Q] Quit",
         'instructions_back': "[B] Back",
         'network_error': "Network error: {e}",
         'parse_error': "Failed to parse API response.",
         'generic_error': "An error occurred: {e}",
         'terminal_size_error': "Please ensure your terminal window is large enough.",
-        'mpv_not_found': "Error: 'mpv' is not installed. Refer to the README for installation instructions."
+        'mpv_not_found': "Error: 'mpv' is not installed. Please install mpv first."
     },
     'nl': {
         'fetching': "RADIOKNOP TUI - Gegevens ophalen...",
@@ -40,26 +43,31 @@ TRANSLATIONS = {
         'select_genre': "Selecteer een Genre",
         'stations_in': "Zenders in '{genre_name}'",
         'no_stations': "Geen zenders gevonden voor '{genre_name}'.",
-        'press_back': "Druk op een toets om terug te gaan...",
+        'press_back': "Druk op 'B' om terug te gaan...",
         'playing': "Speelt nu: {station_name}",
         'stopped': "Gestopt: {station_name}",
         'stream_error': "Fout: Kon geen stream-URL vinden voor '{station_name}'.",
         'press_continue': "Druk op een toets om verder te gaan...",
         'invalid_genre': "'{genre_name}' is geen geldige genrecategorie.",
-        'instructions_nav': "[↑] [↓] Navigeren",
-        'instructions_play': "[⏎ Enter] Afspelen/Stoppen",
+        'instructions_nav': "[↑/↓] Navigeren",
+        'instructions_play': "[Enter] Afspelen/Stoppen",
         'instructions_quit': "[Q] Afsluiten",
         'instructions_back': "[B] Terug",
         'network_error': "Netwerkfout: {e}",
         'parse_error': "API-respons kon niet worden verwerkt.",
         'generic_error': "Er is een fout opgetreden: {e}",
         'terminal_size_error': "Zorg ervoor dat je terminalvenster groot genoeg is.",
-        'mpv_not_found': "Fout: 'mpv' is niet geïnstalleerd. Lees de README voor instructies om het te installeren."
+        'mpv_not_found': "Fout: 'mpv' is niet geïnstalleerd. Installeer mpv om te luisteren."
     }
 }
 
+API_URL = "https://www.radioknop.nl/api.php"
+CACHE_DIR = tempfile.gettempdir()
+CACHE_FILE = os.path.join(CACHE_DIR, "radioknop_cache.json")
+CACHE_DURATION = 24 * 60 * 60
 
-def get_lang():
+
+def get_lang() -> str:
     try:
         lang_code, _ = locale.getlocale()
         if lang_code and lang_code.startswith('nl'):
@@ -73,300 +81,310 @@ try:
     locale.setlocale(locale.LC_ALL, '')
 except locale.Error:
     pass
+
 LANG = get_lang()
 T = TRANSLATIONS[LANG]
 
-API_URL = "https://www.radioknop.nl/api.php"
-CACHE_DIR = tempfile.gettempdir()
-CACHE_FILE = os.path.join(CACHE_DIR, "radioknop_cache.json")
-CACHE_DURATION = 24 * 60 * 60
 
 
-def fetch_data():
-    if os.path.exists(CACHE_FILE):
+class RadioApp:
+    def __init__(self, stdscr):
+        self.stdscr = stdscr
+        self.player_process: Optional[subprocess.Popen] = None
+        self.current_station_name: Optional[str] = None
+        self.data: Dict = {}
+
+        curses.curs_set(0)
+        curses.start_color()
+        curses.use_default_colors()
+        curses.init_pair(1, curses.COLOR_BLACK,
+                         curses.COLOR_WHITE)
+        curses.init_pair(2, curses.COLOR_WHITE,
+                         curses.COLOR_BLUE)
+
+    def check_dependencies(self) -> bool:
+        if shutil.which("mpv") is None:
+            self.show_error(T['mpv_not_found'])
+            return False
+        return True
+
+    def fetch_data(self) -> Dict:
+        if os.path.exists(CACHE_FILE):
+            try:
+                cache_age = time.time() - os.path.getmtime(CACHE_FILE)
+                if cache_age < CACHE_DURATION:
+                    with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+                        return json.load(f)
+            except (IOError, json.JSONDecodeError):
+                pass
+
         try:
-            cache_age = time.time() - os.path.getmtime(CACHE_FILE)
-            if cache_age < CACHE_DURATION:
-                with open(CACHE_FILE, 'r') as f:
-                    return json.load(f)
-        except (IOError, json.JSONDecodeError):
-            pass
+            req = urllib.request.Request(
+                API_URL,
+                headers={'User-Agent': 'RadioKnopTUI/1.0'}
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                raw_data = response.read().decode('utf-8')
+                data = json.loads(raw_data)
 
-    try:
-        response = requests.get(API_URL, timeout=5)
-        response.raise_for_status()
-        data = json.loads(response.text)
+                try:
+                    with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(data, f)
+                except IOError:
+                    pass
+                return data
 
+        except urllib.error.URLError as e:
+            return {"error": T['network_error'].format(e=e.reason)}
+        except json.JSONDecodeError:
+            return {"error": T['parse_error']}
+        except Exception as e:
+            return {"error": T['generic_error'].format(e=e)}
+
+    def play_stream(self, url: str, station_name: str):
+        self.stop_player()
         try:
-            with open(CACHE_FILE, 'w') as f:
-                json.dump(data, f)
-        except IOError:
-            pass
+            self.player_process = subprocess.Popen(
+                ["mpv", "--no-video", url],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            self.current_station_name = station_name
+        except FileNotFoundError:
+            self.player_process = None
+            self.current_station_name = None
 
-        return data
-    except requests.exceptions.RequestException as e:
-        return {"error": T['network_error'].format(e=e)}
-    except json.JSONDecodeError:
-        return {"error": T['parse_error']}
+    def stop_player(self):
+        if self.player_process:
+            self.player_process.terminate()
+            try:
+                self.player_process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                self.player_process.kill()
+            self.player_process = None
 
+    def update_player_status(self):
+        if self.player_process and self.player_process.poll() is not None:
+            self.player_process = None
 
-player_process = None
+    def get_playing_info(self) -> str:
+        self.update_player_status()
+        if self.player_process:
+            return T['playing'].format(station_name=self.current_station_name)
+        elif self.current_station_name:
+            return T['stopped'].format(station_name=self.current_station_name)
+        return ""
 
+    def draw_menu(self, title: str, items: List[str], current_row: int, scroll_offset: int, playing_item_name: Optional[str] = None):
+        self.stdscr.erase()
+        h, w = self.stdscr.getmaxyx()
 
-def play_stream(stream_url):
-    global player_process
-    if player_process:
-        player_process.terminate()
-        player_process.wait()
+        if h < 5 or w < 20:
+            self.stdscr.addstr(0, 0, "Terminal too small")
+            return
 
-    try:
-        player_process = subprocess.Popen(
-            ["mpv", "--no-video", stream_url],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-    except FileNotFoundError:
-        player_process = None
+        header_text = f" {title} "
+        self.stdscr.attron(curses.color_pair(2))
+        self.stdscr.addstr(0, 0, header_text.ljust(w)[
+                           :w-1], curses.color_pair(2))
+        self.stdscr.attroff(curses.color_pair(2))
 
+        max_items = h - 4
 
-def stop_player():
-    global player_process
-    if player_process:
-        player_process.terminate()
-        player_process.wait()
-        player_process = None
-
-
-def draw_menu(stdscr, title, items, current_row, scroll_offset, playing_info="", playing_item_name=None):
-    stdscr.clear()
-    h, w = stdscr.getmaxyx()
-
-    if w == 0 or h == 0:
-        return
-
-    stdscr.attron(curses.color_pair(2))
-    stdscr.addstr(0, 0, title.ljust(w)[:w - 1], curses.color_pair(2))
-    stdscr.attroff(curses.color_pair(2))
-
-    max_items = h - 5
-    if max_items < 1:
-        pass
-    else:
         has_scrollbar = len(items) > max_items
 
-        for i, item in enumerate(items[scroll_offset:scroll_offset + max_items]):
+        for i in range(max_items):
             actual_index = i + scroll_offset
-            display_text = item
-            if item == playing_item_name:
-                display_text += f" [{T['playing'].split(':')[0]}]"
+            if actual_index >= len(items):
+                break
 
-            margin = 7 if has_scrollbar else 4
-            max_len = w - margin
-            if max_len < 0:
-                max_len = 0
+            item_text = items[actual_index]
+            display_text = item_text
+
+            if item_text == self.current_station_name and self.player_process:
+                display_text = f"▶️ {display_text}"
+            elif item_text == self.current_station_name and not self.player_process:
+                display_text = f"⏹️ {display_text}"
+
+            max_len = w - 4 if has_scrollbar else w - 2
             display_text = display_text[:max_len]
 
-            line_num = i + 2
+            line_num = i + 1
             if actual_index == current_row:
-                stdscr.attron(curses.color_pair(1))
-                stdscr.addstr(line_num, 2, f"> {display_text}")
-                stdscr.attroff(curses.color_pair(1))
+                self.stdscr.attron(curses.color_pair(1))
+                self.stdscr.addstr(
+                    line_num, 1, f"{display_text}".ljust(max_len))
+                self.stdscr.attroff(curses.color_pair(1))
             else:
-                stdscr.addstr(line_num, 2, f"  {display_text}")
+                self.stdscr.addstr(line_num, 1, f"{display_text}")
 
         if has_scrollbar:
             scrollbar_height = max_items
-            handle_height = max(
-                1, round(scrollbar_height * max_items / len(items)))
-
             scroll_range = len(items) - max_items
-            track_space = scrollbar_height - handle_height
-            scroll_percent = scroll_offset / scroll_range if scroll_range > 0 else 0
-            handle_y = round(scroll_percent * track_space)
+            if scroll_range > 0:
+                thumb_size = max(
+                    1, int((max_items / len(items)) * scrollbar_height))
+                thumb_pos = int((scroll_offset / scroll_range)
+                                * (scrollbar_height - thumb_size))
 
-            for i in range(scrollbar_height):
-                char = '█' if i >= handle_y and i < handle_y + handle_height else '│'
-                try:
-                    stdscr.addstr(i + 2, w - 2, char)
-                except curses.error:
-                    pass
+                for i in range(scrollbar_height):
+                    char = '┃'
+                    if i >= thumb_pos and i < thumb_pos + thumb_size:
+                        char = '█'
+                    self.stdscr.addstr(i + 1, w - 1, char)
 
-    instruction_parts = [
-        T['instructions_nav'],
-        T['instructions_play'],
-        T['instructions_quit']
-    ]
-    if "Stations" in title or "Zenders" in title:
-        instruction_parts.append(T['instructions_back'])
-    instructions = " | ".join(instruction_parts)
+        playing_info = self.get_playing_info()
+        if playing_info:
+            self.stdscr.attron(curses.color_pair(2))
+            self.stdscr.addstr(h - 2, 0, playing_info.ljust(w)
+                               [:w-1], curses.color_pair(2))
+            self.stdscr.attroff(curses.color_pair(2))
 
-    if h > 3:
-        stdscr.addstr(h - 3, 2, instructions[:w - 4])
+        instruction_parts = [T['instructions_nav'],
+                             T['instructions_play'], T['instructions_quit']]
+        if "Stations" in title or "Zenders" in title:
+            instruction_parts.append(T['instructions_back'])
 
-    if playing_info and h > 1:
-        stdscr.attron(curses.color_pair(2))
-        stdscr.addstr(h - 1, 0, playing_info.ljust(w)
-                      [:w - 1], curses.color_pair(2))
-        stdscr.attroff(curses.color_pair(2))
+        instr_str = " | ".join(instruction_parts)
+        self.stdscr.addstr(h - 1, 0, instr_str[:w-1])
 
-    stdscr.refresh()
+        self.stdscr.refresh()
 
+    def show_error(self, msg: str):
+        self.stdscr.clear()
+        self.stdscr.addstr(2, 2, f"{T['error_prefix']}{msg}")
+        self.stdscr.addstr(4, 2, T['press_quit'])
+        self.stdscr.refresh()
+        self.stdscr.getch()
 
-def station_menu(stdscr, genre_name, stations):
-    current_row = 0
-    scroll_offset = 0
-    station_names = [s.get('name')
-                     for s in stations if isinstance(s, dict) and s.get('name')]
+    def run_station_menu(self, genre_name: str, stations: List[Dict]):
+        current_row = 0
+        scroll_offset = 0
+        station_names = [s.get('name', 'Unknown')
+                         for s in stations if isinstance(s, dict)]
 
-    if not station_names:
-        stdscr.clear()
-        stdscr.addstr(2, 2, T['no_stations'].format(genre_name=genre_name))
-        stdscr.addstr(4, 2, T['press_back'])
-        stdscr.refresh()
-        stdscr.getch()
-        return
+        if not station_names:
+            self.show_error(T['no_stations'].format(genre_name=genre_name))
+            return
 
-    playing_info = ""
-    currently_playing_name = None
+        self.stdscr.timeout(100)
 
-    while True:
-        h, w = stdscr.getmaxyx()
-        max_items = h - 5
-        if max_items < 1:
-            max_items = 1
+        while True:
+            h, w = self.stdscr.getmaxyx()
+            max_items = h - 4
 
-        title = T['stations_in'].format(genre_name=genre_name)
-        draw_menu(stdscr, title, station_names, current_row, scroll_offset,
-                  playing_info, playing_item_name=currently_playing_name)
+            self.draw_menu(
+                T['stations_in'].format(genre_name=genre_name),
+                station_names,
+                current_row,
+                scroll_offset
+            )
 
-        key = stdscr.getch()
+            key = self.stdscr.getch()
 
-        if key == curses.KEY_UP:
-            if current_row > 0:
-                current_row -= 1
-                if current_row < scroll_offset:
-                    scroll_offset = current_row
-        elif key == curses.KEY_DOWN:
-            if current_row < len(station_names) - 1:
-                current_row += 1
-                if current_row >= scroll_offset + max_items:
-                    scroll_offset += 1
-        elif key == ord('b'):
-            stop_player()
-            break
-        elif key == ord('q'):
-            stop_player()
-            return 'quit'
-        elif key in [curses.KEY_ENTER, 10, 13]:
-            selected_station_name = station_names[current_row]
+            if key == -1:
+                self.update_player_status()
+                continue
 
-            if currently_playing_name == selected_station_name:
-                stop_player()
-                playing_info = T['stopped'].format(
-                    station_name=selected_station_name)
-                currently_playing_name = None
-            else:
-                selected_station = next(
-                    (s for s in stations if s.get('name') == selected_station_name), None)
+            if key == curses.KEY_UP:
+                if current_row > 0:
+                    current_row -= 1
+                    if current_row < scroll_offset:
+                        scroll_offset = current_row
+            elif key == curses.KEY_DOWN:
+                if current_row < len(station_names) - 1:
+                    current_row += 1
+                    if current_row >= scroll_offset + max_items:
+                        scroll_offset += 1
+            elif key in [ord('b'), ord('B')]:
+                self.stop_player()
+                break
+            elif key in [ord('q'), ord('Q')]:
+                self.stop_player()
+                return 'quit'
+            elif key in [curses.KEY_ENTER, 10, 13]:
+                selected_name = station_names[current_row]
 
-                if selected_station and selected_station.get('url'):
-                    play_stream(selected_station['url'])
-                    playing_info = T['playing'].format(
-                        station_name=selected_station['name'])
-                    currently_playing_name = selected_station['name']
+                if self.current_station_name == selected_name and self.player_process:
+                    self.stop_player()
+                    self.current_station_name = selected_name
                 else:
-                    stdscr.clear()
-                    stdscr.addstr(
-                        2, 2, T['stream_error'].format(station_name=selected_station_name))
-                    stdscr.addstr(4, 2, T['press_continue'])
-                    stdscr.refresh()
-                    stdscr.getch()
+                    selected_station = next(
+                        (s for s in stations if s.get('name') == selected_name), None)
+                    if selected_station and selected_station.get('url'):
+                        self.play_stream(
+                            selected_station['url'], selected_name)
+                    else:
+                        self.stdscr.timeout(-1)
+                        self.show_error(T['stream_error'].format(
+                            station_name=selected_name))
+                        self.stdscr.timeout(100)
+
+        self.stdscr.timeout(-1)
+
+    def run(self):
+        if not self.check_dependencies():
+            return
+
+        self.stdscr.clear()
+        self.stdscr.addstr(0, 0, T['fetching'])
+        self.stdscr.refresh()
+
+        data = self.fetch_data()
+        if "error" in data:
+            self.show_error(data['error'])
+            return
+
+        self.data = data
+        genres = list(self.data.keys())
+        current_row = 0
+        scroll_offset = 0
+
+        while True:
+            h, w = self.stdscr.getmaxyx()
+            max_items = h - 4
+
+            self.draw_menu(T['select_genre'], genres,
+                           current_row, scroll_offset)
+
+            key = self.stdscr.getch()
+
+            if key == curses.KEY_UP:
+                if current_row > 0:
+                    current_row -= 1
+                    if current_row < scroll_offset:
+                        scroll_offset = current_row
+            elif key == curses.KEY_DOWN:
+                if current_row < len(genres) - 1:
+                    current_row += 1
+                    if current_row >= scroll_offset + max_items:
+                        scroll_offset += 1
+            elif key in [ord('q'), ord('Q')]:
+                break
+            elif key in [curses.KEY_ENTER, 10, 13]:
+                selected_genre = genres[current_row]
+                stations = self.data[selected_genre]
+
+                if isinstance(stations, list):
+                    result = self.run_station_menu(selected_genre, stations)
+                    if result == 'quit':
+                        break
+                else:
+                    self.show_error(T['invalid_genre'].format(
+                        genre_name=selected_genre))
+
+        self.stop_player()
 
 
 def main(stdscr):
-    curses.curs_set(0)
-    stdscr.nodelay(0)
-    curses.start_color()
-    curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)
-    curses.init_pair(2, curses.COLOR_WHITE, curses.COLOR_BLUE)
-
-    if shutil.which("mpv") is None:
-        stdscr.clear()
-        error_message = T['mpv_not_found']
-        quit_message = T['press_quit']
-
-        h, w = stdscr.getmaxyx()
-        y = h // 2
-        x_error = w // 2 - len(error_message) // 2
-        x_quit = w // 2 - len(quit_message) // 2
-
-        stdscr.addstr(y - 1, x_error, error_message)
-        stdscr.addstr(y + 1, x_quit, quit_message)
-
-        stdscr.refresh()
-        stdscr.getch()
-        return
-
-    stdscr.addstr(0, 0, T['fetching'])
-    stdscr.refresh()
-
-    data = fetch_data()
-
-    if "error" in data:
-        stdscr.clear()
-        stdscr.addstr(0, 0, f"{T['error_prefix']}{data['error']}")
-        stdscr.addstr(2, 0, T['press_quit'])
-        stdscr.refresh()
-        stdscr.getch()
-        return
-
-    genres = list(data.keys())
-    current_row = 0
-    scroll_offset = 0
-
-    while True:
-        h, w = stdscr.getmaxyx()
-        max_items = h - 5
-        if max_items < 1:
-            max_items = 1
-
-        draw_menu(stdscr, T['select_genre'], genres,
-                  current_row, scroll_offset)
-
-        key = stdscr.getch()
-
-        if key == curses.KEY_UP:
-            if current_row > 0:
-                current_row -= 1
-                if current_row < scroll_offset:
-                    scroll_offset = current_row
-        elif key == curses.KEY_DOWN:
-            if current_row < len(genres) - 1:
-                current_row += 1
-                if current_row >= scroll_offset + max_items:
-                    scroll_offset += 1
-        elif key == ord('q'):
-            break
-        elif key in [curses.KEY_ENTER, 10, 13]:
-            selected_genre = genres[current_row]
-            stations = data[selected_genre]
-            if isinstance(stations, list):
-                if station_menu(stdscr, selected_genre, stations) == 'quit':
-                    break
-            else:
-                stdscr.clear()
-                stdscr.addstr(
-                    2, 2, T['invalid_genre'].format(genre_name=selected_genre))
-                stdscr.addstr(4, 2, T['press_continue'])
-                stdscr.refresh()
-                stdscr.getch()
-
-    stop_player()
+    app = RadioApp(stdscr)
+    app.run()
 
 
 if __name__ == "__main__":
     try:
         curses.wrapper(main)
+    except KeyboardInterrupt:
+        pass
     except Exception as e:
-        print(T['generic_error'].format(e=e))
-        print(T['terminal_size_error'])
+        print(f"Critical Error: {e}")
