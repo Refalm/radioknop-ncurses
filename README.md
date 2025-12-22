@@ -7,7 +7,7 @@ A terminal-based application to browse and play radio stations from radioknop.nl
 This project uses a `Makefile` to simplify setup and execution.
 
 1. **Install dependencies:**
-    This command will install mpv and Python, then creates a Python virtual environment in a `.venv` directory and installs the required packages from `requirements.txt`.
+    This command will install mpv and Python.
 
     ```shell
     make install
@@ -28,20 +28,7 @@ If you prefer not to use `make`, you can follow these steps:
 
     Refer to your distribution documentation on how to install mpv and Python.
 
-2. Create and activate a virtual environment:
-
-    ```shell
-    python3 -m venv .venv
-    source .venv/bin/activate
-    ```
-
-3. Install the required dependencies:
-
-    ```shell
-    pip install -r requirements.txt
-    ```
-
-4. Run the application:
+2. Run the application:
 
     ```shell
     python3 radioknop_tui.py
