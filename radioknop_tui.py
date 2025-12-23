@@ -121,7 +121,7 @@ class RadioApp:
         try:
             req = urllib.request.Request(
                 API_URL,
-                headers={'User-Agent': 'RadioKnopTUI/1.0'}
+                headers={'User-Agent': 'RADIOKNOP_TUI/1.0'}
             )
             with urllib.request.urlopen(req, timeout=5) as response:
                 raw_data = response.read().decode('utf-8')
