@@ -29,15 +29,15 @@ install:
 	fi; \
 	case "$$OS_ID" in \
 		debian|ubuntu) \
-			echo ">>> Detected Debian/Ubuntu-based system..."; \
+			echo ">>> Detected Debian-based system..."; \
 			sudo apt-get update && sudo apt-get install -y mpv python3; \
 			;; \
 		fedora|rhel|centos) \
-			echo ">>> Detected Fedora/RHEL-based system..."; \
+			echo ">>> Detected Red Hat-based system..."; \
 			sudo dnf install -y mpv python3; \
 			;; \
 		bazzite|aurora|bluefin) \
-			echo ">>> Detected Atomic/Universal Blue system..."; \
+			echo ">>> Detected Universal Blue-based system..."; \
 			TO_INSTALL=""; \
 			for pkg in mpv python3; do \
 				if ! rpm -q $$pkg >/dev/null 2>&1; then \
@@ -82,5 +82,5 @@ run:
 		echo "Error: $(SCRIPT_NAME) not found!"; \
 		exit 1; \
 	fi
-	@echo ">>> Starting RadioKnop TUI..."
+	@echo ">>> Starting RADIOKNOP TUI..."
 	@$(PYTHON) $(SCRIPT_NAME)
