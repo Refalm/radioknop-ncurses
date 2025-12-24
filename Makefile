@@ -64,6 +64,11 @@ install:
 			echo ">>> Detected Alpine Linux..."; \
 			sudo apk add mpv python3; \
 			;; \
+		slackware) \
+			echo ">>> Detected Slackware..."; \
+			sudo sqg -p mpv; \
+			sudo sbopkg -k -i mpv; \
+			;; \
 		macos) \
 			echo ">>> Detected macOS..."; \
 			if ! command -v brew >/dev/null 2>&1; then \
