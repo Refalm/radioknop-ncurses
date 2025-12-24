@@ -24,13 +24,13 @@ This project uses a `Makefile` to simplify setup and execution.
     make run
     ```
 
-### Manual Setup (Alternative)
+### Manual Setup (Linux or macOS)
 
 If you prefer not to use `make`, you can follow these steps:
 
 1. Install mpv and Python
 
-    Refer to your distribution documentation on how to install mpv and Python.
+    Refer to your distribution documentation on how to install mpv and Python, or just use [Homebrew](https://brew.sh)
 
 2. Run the application:
 
@@ -38,11 +38,17 @@ If you prefer not to use `make`, you can follow these steps:
     python3 radioknop_tui.py
     ```
 
-### Windows
+### Manual Setup (Windows)
 
-Maybe if you
+Maybe if you install Chocolatey, Python, windows-curses, mpv:
 
-- [install windows-curses](https://pypi.org/project/windows-curses/)
-- [install mpv with Chocolatey](https://community.chocolatey.org/packages/mpvio)
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+choco install -y python
+py -m ensurepip --default-pip
+py -m pip install --upgrade pip setuptools wheel
+py -m pip install windows-curses
+choco install -y mpvio
+```
 
 it might work, but I want to stay away from Windows as much as possible, so let me know if that actually works.
