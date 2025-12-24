@@ -1,10 +1,10 @@
 # RADIOKNOP NCurses TUI
 
-A terminal-based application to browse and play radio stations from radioknop.nl.
+A terminal-based application to browse and play radio stations from [radioknop.nl](https://www.radioknop.nl)
 
-<img width="1147" height="776" alt="Scherm­afbeelding 2025-12-24 om 16 07 55" src="https://github.com/user-attachments/assets/23a6534c-8cb0-4a0b-a899-b57390a1f214" />
+![Scherm­afbeelding 2025-12-24 om 16 07 55](https://github.com/user-attachments/assets/23a6534c-8cb0-4a0b-a899-b57390a1f214)
 
-<img width="1129" height="681" alt="Scherm­afbeelding 2025-12-24 om 16 07 06" src="https://github.com/user-attachments/assets/5185c8be-26ce-4aa7-b793-8b5141349df0" />
+![Scherm­afbeelding 2025-12-24 om 16 07 06](https://github.com/user-attachments/assets/5185c8be-26ce-4aa7-b793-8b5141349df0)
 
 ## Installation & Usage
 
