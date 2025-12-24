@@ -2,7 +2,7 @@
 
 PYTHON = python3
 SCRIPT_NAME = radioknop_tui.py
-SHELL := /bin/bash
+SHELL := /bin/sh
 
 .PHONY: all install run help
 
@@ -17,7 +17,7 @@ install:
 	@echo ">>> Detecting OS and installing system dependencies (mpv, python3)..."
 	@if [ -f /etc/os-release ]; then \
 		. /etc/os-release; \
-		if [[ "$$ID" = "bazzite" || "$$ID" = "aurora" || "$$ID" = "bluefin" ]]; then \
+		if [ "$$ID" = "bazzite" ] || [ "$$ID" = "aurora" ] || [ "$$ID" = "bluefin" ]; then \
 			OS_ID="$$ID"; \
 		else \
 			OS_ID=$${ID_LIKE:-$${ID}}; \
